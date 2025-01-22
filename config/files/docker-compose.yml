@@ -1,0 +1,164 @@
+x-app: &app-common
+  image: ${APP_IMAGE:-ghcr.io/qicklabs/attendance-service:latest}
+  env_file:
+    - .env
+  restart: always
+
+services:
+  app:
+    <<: *app-common
+    ports:
+      - 80:8080
+      - 443:8443
+    networks:
+      - sail
+    healthcheck:
+      test: curl --fail 127.0.0.1:80 || exit 1
+      interval: 3s
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      meilisearch:
+        condition: service_healthy
+      soketi:
+        condition: service_healthy
+
+  queue:
+    <<: *app-common
+    command: php /var/www/html/artisan queue:work --memory=512 --timeout=400
+    depends_on:
+      - app
+    networks:
+      - sail
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'php /var/www/html/artisan queue:monitor default || exit 1',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  scheduler:
+    <<: *app-common
+    command: php /var/www/html/artisan schedule:work
+    networks:
+      - sail
+    depends_on:
+      - app
+    healthcheck:
+      test: ['CMD-SHELL', 'php /var/www/html/artisan schedule:list || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  db:
+    image: 'mariadb:10.6'
+    restart: always
+    environment:
+      MYSQL_DATABASE: '${DB_DATABASE:-app}'
+      MYSQL_USER: '${DB_USERNAME:-root}'
+      MYSQL_PASSWORD: '${DB_PASSWORD}'
+      MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+    volumes:
+      - 'db:/var/lib/mysql'
+    networks:
+      - sail
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-p${DB_PASSWORD}']
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 30s
+
+  redis:
+    image: 'redis:alpine'
+    ports:
+      - '${FORWARD_REDIS_PORT:-6379}:6379'
+    volumes:
+      - 'redis:/data'
+    networks:
+      - sail
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      retries: 3
+      timeout: 5s
+
+  meilisearch:
+    image: 'getmeili/meilisearch:v1.10'
+    #image: 'getmeili/meilisearch:latest'
+    ports:
+      - '${MEILISEARCH_PORT:-7700}:7700'
+    env_file:
+      - .env
+    environment:
+      APP_DOMAIN: '${APP_DOMAIN}'
+      MEILISEARCH_PORT: '${MEILISEARCH_PORT}'
+    volumes:
+      - 'meilisearch:/meili_data'
+    networks:
+      - sail
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'wget',
+          '--no-verbose',
+          '--spider',
+          'http://${APP_DOMAIN:-localhost}:${MEILISEARCH_PORT:-7700}/health',
+        ]
+      retries: 3
+      timeout: 5s
+
+  mailpit:
+    image: 'axllent/mailpit:latest'
+    ports:
+      - '${FORWARD_MAILPIT_PORT:-1025}:1025'
+      - '${FORWARD_MAILPIT_DASHBOARD_PORT:-8025}:8025'
+    networks:
+      - sail
+
+  soketi:
+    image: 'quay.io/soketi/soketi:latest-16-alpine'
+    env_file:
+      - .env
+    environment:
+      SOKETI_DEBUG: '${SOKETI_DEBUG:-1}'
+      SOKETI_METRICS_SERVER_PORT: '9601'
+      SOKETI_METRICS_ENABLED: '1'
+      SOKETI_DEFAULT_APP_ID: '${PUSHER_APP_ID:- app-id}'
+      SOKETI_DEFAULT_APP_KEY: '${PUSHER_APP_KEY:- app-key}'
+      SOKETI_DEFAULT_APP_SECRET: '${PUSHER_APP_SECRET:- app-secret}'
+    ports:
+      - '${PUSHER_PORT:-6001}:6001'
+      - '${PUSHER_METRICS_PORT:-9601}:9601'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'wget',
+          '--no-verbose',
+          '--tries=1',
+          '--spider',
+          'http://${APP_DOMAIN:-localhost}:${PUSHER_METRICS_PORT:-9601}/metrics'
+        ]
+      interval: 3s
+      timeout: 5s
+      retries: 3
+    networks:
+      - sail
+
+networks:
+  sail:
+    driver: bridge
+
+volumes:
+  db:
+    driver: local
+  redis:
+    driver: local
+  meilisearch:
+    driver: local
