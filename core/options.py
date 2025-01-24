@@ -1,20 +1,15 @@
-import os, json,typer, shutil, subprocess, socket, logging
+import os, json,typer, shutil, subprocess, socket, logging, re
 from logging import Logger
 
 from pathlib import Path
+
 
 from rich.prompt import Prompt
 from certbot.main import main as certbot_main
 
 from config.typedef import CONFIG
+from .validators import Validator as PromptValidator
 
-logging.basicConfig(
-    filemode='a',
-    datefmt='%H:%M:%S',
-    level=logging.DEBUG,
-    filename=CONFIG.LOG_DIR,
-    format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
-)
 
 class CLI:
     _logger: Logger = logging.getLogger("MEETCLI")
@@ -43,10 +38,19 @@ class CLI:
             return
 
         domain_name = Prompt.ask("Enter your domain name which will host your app")
-        enable_ssl = Prompt.ask("Enable SSL? Y/N")
+        while not PromptValidator.validate_domain_name(domain_name):
+            print("Invalid domain name, please enter a domain name.")
+            domain_name = Prompt.ask("Enter your domain name which will host your app")
+
+        enable_ssl = typer.confirm("Enable SSL?")
 
         if enable_ssl:
             email = Prompt.ask("Enter your email address for ssl notices")
+
+            while not PromptValidator.validate_email(email):
+                print("Invalid domain name, please enter a domain name.")
+                email = Prompt.ask("Enter your email address for ssl notices")
+
             ssl_active = CLI.obtain_cert(domain_name,email)
 
         protocol = "https" if ssl_active else "http"
@@ -54,7 +58,7 @@ class CLI:
         variables = {
             CONFIG.BASE_DOMAIN: domain_name,
             CONFIG.KEY_APP_DOMAIN: domain_name,
-            CONFIG.KEY_SERVICE_NAME: "Attendance-Service",
+            CONFIG.KEY_SERVICE_NAME: CONFIG.PROJECT_DIR.lower(),
             CONFIG.KEY_PROD_ENV_PUSHER_APP_SCHEME: protocol,
             CONFIG.KEY_APP_URL: f"{protocol}://{domain_name}",
             CONFIG.KEY_SANCTUM_DOMAINS: f"{protocol}://{domain_name}",
@@ -127,12 +131,37 @@ class CLI:
         if not CLI._is_installed():
             print("Application not installed. Install with install")
             raise typer.Abort()
-        option = option = Prompt.ask(
-        "Select service to view logs for\n1. Install\n2. Start\n3. Status\n4. Upgrade\n5. View Logs\n6. Exit\nAction[1]"
+        services = subprocess.run(
+            [
+                "docker",
+                "ps",
+                "--format",
+                "{{.Names}}"
+            ],
+            text=True,
+            check=True,
+            capture_output=True,
         )
-        match int(option):
-            case 1:
-                print("Okay")
+        containers = services.stdout.splitlines()
+        matching_containers = [c for c in containers if re.match(fr"^{re.escape("attendance")}", c)]
+
+        print("Meetcount Logs - Services Running:")
+        for i, container in enumerate(matching_containers, start=1):
+            typer.echo(f"{i}. {container.capitalize()}")
+
+        choice = Prompt.ask("Select service to view logs for")
+
+        while not choice.isdigit() or int(choice) < 1 or int(choice) > len(containers):
+            typer.echo("Invalid choice. Please enter a valid number.")
+            choice = typer.prompt("Select service to view logs for")
+
+        selected_service = matching_containers[int(choice) - 1]
+        try:
+            subprocess.run(["docker", "logs", "-f", selected_service])
+        except subprocess.CalledProcessError as e:
+            typer.echo(f"Failed to execute docker command: {e}")
+        except KeyboardInterrupt:
+            CLI.get_status()
 
     @staticmethod
     def obtain_cert(domain_name, email):

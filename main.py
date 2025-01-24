@@ -1,4 +1,4 @@
-import os
+import os, logging
 
 import typer
 
@@ -16,6 +16,14 @@ def main():
         with open(CONFIG.LOG_DIR, 'w') as log_file:
             log_file.write("")
 
+    logging.basicConfig(
+        filemode='a',
+        datefmt='%H:%M:%S',
+        level=logging.DEBUG,
+        filename=CONFIG.LOG_DIR,
+        format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+    )
+
     # ------------------------------------------------------------
     # MAIN ENTRY PROMPT
     option = Prompt.ask(
@@ -23,13 +31,19 @@ def main():
         "1. Install\n2. Start\n3. Status\n4. Upgrade\n5. View Logs\n6. Stop\n7. Uninstall\n6. Exit\nAction[1]"
     )
 
+    while not option.isdigit() or int(option) < 1 or int(option) > 6:
+        option = Prompt.ask(
+            "Invalid option, please enter a valid number\n"
+            "1. Install\n2. Start\n3. Status\n4. Upgrade\n5. View Logs\n6. Stop\n7. Uninstall\n6. Exit\nAction[1]"
+        )
+
     match int(option):
         case 1:
             CLI.install_app()
         case 2:
             CLI.start_app()
         case 3:
-            print("@@@")
+            CLI.get_status()
         case 6:
             CLI.stop_app()
         case 7:

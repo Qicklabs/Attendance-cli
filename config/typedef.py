@@ -2,16 +2,16 @@
 class CONFIG:
     # ------------------------------------------------------------
     # PROJECT CONFIG
-    PROJECT_DIR = "Attendanc"
+    PROJECT_DIR = "Meetcount"
     CONFIG_DIR = "./config"
-    PRODUCTION_DIR = f"{PROJECT_DIR}/production"
+    PRODUCTION_DIR = f"{PROJECT_DIR}"
     LOG_DIR = f"{PROJECT_DIR}/app.log"
 
     FILES_PATH = f"{CONFIG_DIR}/files"
     CONFIG_ENV_PATH = f"{FILES_PATH}/variables.env"
     CONFIG_COMPOSE = f"{FILES_PATH}/docker-compose.yml"
 
-    PRODUCTION_COMPOSE = f"deploy.yaml"
+    PRODUCTION_COMPOSE = f".deploy.yaml"
     PRODUCTION_ENV = f".env"
 
     SOURCE_FILES = {
@@ -59,5 +59,8 @@ class CONFIG:
     SSL_WORK_DIR = f"{PROJECT_DIR}/ssl/work"
     SSL_LOG_DIR_DIR = f"{PROJECT_DIR}/ssl/dir"
     SSL_PATHS = [SSL_CONFIG_DIR,SSL_LOG_DIR_DIR,SSL_WORK_DIR]
+
+    DOMAIN_PATTERN = r"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$"
+    EMAIL_PATTERN = r"^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$"
 
 
